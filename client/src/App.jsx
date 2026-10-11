@@ -4,7 +4,10 @@ import "./App.css";
 
 // Start with Socket.IO's polling transport and upgrade to WebSocket when the
 // host supports it. This keeps chat working behind proxies that block upgrades.
-const socket = io({ reconnection: true, reconnectionDelayMax: 5000, timeout: 10000 });
+const socketUrl = import.meta.env.VITE_SOCKET_URL || (import.meta.env.DEV
+  ? window.location.origin
+  : "https://real-time-chat-application-0one.onrender.com");
+const socket = io(socketUrl, { reconnection: true, reconnectionDelayMax: 5000, timeout: 10000 });
 const SELF_CHAT_ID = "saved";
 const GENERAL_CHAT_ID = "general";
 const MAX_MESSAGES = 500;

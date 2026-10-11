@@ -13,12 +13,16 @@ app.use(express.json());
 
 const server = http.createServer(app);
 
+const socketOrigins = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://real-time-chat-application-1-lwvm.onrender.com",
+    ...(process.env.CLIENT_ORIGINS || "").split(",").map((origin) => origin.trim()).filter(Boolean)
+];
+
 const io = new Server(server, {
     cors: {
-        origin: [
-            "http://localhost:5173",
-            "http://localhost:5174"
-        ],
+        origin: socketOrigins,
         methods: ["GET", "POST"]
     }
 });
@@ -91,6 +95,9 @@ async function removePresence(socketId) {
 
 const clientBuild = path.join(__dirname, "..", "client", "dist");
 app.use(express.static(clientBuild));
+app.get("/", (req, res) => {
+    res.send("Chat Server Running");
+});
 
 io.on("connection", (socket) => {
     console.log("User connected:", socket.id);

@@ -6,6 +6,8 @@ Create a Render Blueprint from this repository and select `render.yaml`. The Blu
 
 The chat needs the **Node Web Service** described by the Blueprint. A Render Static Site can serve the client but cannot host Socket.IO: the deployed app's `/health` endpoint should return `OK`, and `/socket.io/` must be handled by the same web service. If either endpoint returns Render's plain `Not Found`, deploy the Blueprint as a Web Service and use that service's URL. The client starts with Socket.IO polling and upgrades to WebSocket when available, so it also works behind proxies that block WebSocket upgrades.
 
+If the frontend and backend are deployed as separate Render services, the client uses `VITE_SOCKET_URL` (defaulting in production to `https://real-time-chat-application-0one.onrender.com`) to reach the backend. The backend allows the current frontend origin; for a different frontend URL, set `CLIENT_ORIGINS` on the backend to a comma-separated list of exact frontend origins. The backend root responds with `Chat Server Running`; `/health` and `/socket.io/` verify service health and realtime connectivity.
+
 The checked-in Blueprint uses Render's free plan, which runs one instance. This is suitable for a small demo; it does not provide unlimited concurrent users or high availability. Free instances can also spin down when idle.
 
 ## Scaling to multiple instances
