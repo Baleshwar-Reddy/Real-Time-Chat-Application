@@ -36,14 +36,31 @@ function persistSavedMessage(message) {
   }
 }
 
+function loadUsername() {
+  try {
+    const savedName = sessionStorage.getItem("chat-name");
+    if (savedName) return savedName;
+  } catch {
+    // Keep the chat usable when browser storage is disabled.
+  }
+  const guestName = `Guest-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  try {
+    sessionStorage.setItem("chat-name", guestName);
+  } catch {
+    // The temporary name remains available for this page session.
+  }
+  return guestName;
+}
+
 function App() {
-  const [username, setUsername] = useState(() => sessionStorage.getItem("chat-name") || "");
-  const [editingName, setEditingName] = useState(!sessionStorage.getItem("chat-name"));
+  const [username, setUsername] = useState(loadUsername);
+  const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState(loadSavedMessages);
   const [users, setUsers] = useState([]);
   const [activeCount, setActiveCount] = useState(0);
+  const [connectionStatus, setConnectionStatus] = useState(socket.connected ? "connected" : "connecting");
   const [ownId, setOwnId] = useState(socket.id);
   const [chatError, setChatError] = useState("");
   const [selectedChat, setSelectedChat] = useState({ id: GENERAL_CHAT_ID, name: "General Channel", type: "channel" });
@@ -74,9 +91,12 @@ function App() {
     };
     const onOnlineCount = (count) => setActiveCount(count);
     const onConnect = () => {
+      setConnectionStatus("connected");
       setOwnId(socket.id);
       if (username) socket.emit("set_username", username);
     };
+    const onDisconnect = () => setConnectionStatus("reconnecting");
+    const onConnectError = () => setConnectionStatus("reconnecting");
 
     socket.on("receive_message", onMessage);
     socket.on("online_users", onUsers);
@@ -85,6 +105,8 @@ function App() {
     socket.on("user_left", onUserLeft);
     socket.on("online_count", onOnlineCount);
     socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
     if (socket.connected && username) socket.emit("set_username", username);
 
     return () => {
@@ -95,6 +117,8 @@ function App() {
       socket.off("user_left", onUserLeft);
       socket.off("online_count", onOnlineCount);
       socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
     };
   }, [username]);
 
@@ -106,14 +130,24 @@ function App() {
     event?.preventDefault();
     const cleanName = nameDraft.trim();
     if (!cleanName) return;
-    sessionStorage.setItem("chat-name", cleanName);
+    try {
+      sessionStorage.setItem("chat-name", cleanName);
+    } catch {
+      // The current name remains active even when browser storage is unavailable.
+    }
     setUsername(cleanName);
     setEditingName(false);
   };
 
   const sendMessage = () => {
     const cleanMessage = message.trim();
-    if (!username.trim() || !cleanMessage) return;
+    if (!cleanMessage) return;
+    if (!username.trim()) {
+      setChatError("Choose a display name before sending your message.");
+      setNameDraft("");
+      setEditingName(true);
+      return;
+    }
     setChatError("");
 
     if (selectedChat.type === "saved") {
@@ -127,15 +161,26 @@ function App() {
       if (!persistSavedMessage(savedMessage)) setChatError("Saved messages could not be stored on this device.");
       setMessages((previous) => [...previous.slice(-(MAX_MESSAGES - 1)), savedMessage]);
     } else {
-      socket.emit("send_message", {
+      if (!socket.connected) {
+        setChatError("Chat is reconnecting. Your message is still here; try again when connected.");
+        setConnectionStatus("reconnecting");
+        return;
+      }
+      socket.timeout(8000).emit("send_message", {
         message: cleanMessage,
         recipientId: selectedChat.type === "direct" ? selectedChat.id : undefined,
-      }, (result) => {
+      }, (timeoutError, result) => {
+        if (timeoutError) {
+          setChatError("Message could not reach the server. Your message is still here; try again.");
+          return;
+        }
         if (result?.error) {
           setChatError(result.error);
-          setMessage((current) => current || cleanMessage);
+          return;
         }
+        setMessage((current) => current === cleanMessage ? "" : current);
       });
+      return;
     }
     setMessage("");
   };
@@ -161,7 +206,7 @@ function App() {
         <header className="sidebar-heading">
           <div>
             <h1>Real-Time Chat</h1>
-            <p>{activeCount} active</p>
+            <p>{connectionStatus === "connected" ? `${activeCount} active` : connectionStatus === "connecting" ? "Connecting…" : "Reconnecting…"}</p>
           </div>
           {username && <button className="profile-button" type="button" aria-label="Edit name" onClick={() => { setNameDraft(username); setEditingName(true); }}>Edit name</button>}
         </header>
@@ -196,7 +241,7 @@ function App() {
       <section className="conversation">
         <header className="channel-header">
           <span className={`status-dot ${selectedChat.type === "saved" ? "saved-status" : ""}`} />
-          <div className="conversation-title"><h2>{selectedChat.name}</h2><span>{selectedChat.type === "channel" ? `${activeCount} people online` : selectedChat.type === "saved" ? "Only you can see these messages" : selectedContactOnline ? "Online now" : "Offline"}</span></div>
+          <div className="conversation-title"><h2>{selectedChat.name}</h2><span>{selectedChat.type === "channel" ? connectionStatus === "connected" ? `${activeCount} people online` : "Reconnecting to chat…" : selectedChat.type === "saved" ? "Only you can see these messages" : selectedContactOnline ? "Online now" : "Offline"}</span></div>
         </header>
         <div className="messages" aria-live="polite">
           {visibleMessages.length === 0 && selectedChat.type === "saved" && <p className="conversation-empty">Write a note to yourself. Your saved messages stay on this device.</p>}
@@ -213,8 +258,8 @@ function App() {
         </div>
         {chatError && <p className="chat-error" role="status">{chatError}</p>}
         <form className="composer" onSubmit={(event) => { event.preventDefault(); sendMessage(); }}>
-          <input aria-label="Type a message" placeholder={username ? "Type a message..." : "Choose a name to start chatting..."} value={message} onChange={(event) => setMessage(event.target.value)} disabled={!username} maxLength={2000} />
-          <button type="submit" disabled={!username || !message.trim()}>Send</button>
+          <input aria-label="Type a message" placeholder="Type a message..." value={message} onChange={(event) => setMessage(event.target.value)} maxLength={2000} />
+          <button type="submit" disabled={!message.trim()}>Send</button>
         </form>
       </section>
 
