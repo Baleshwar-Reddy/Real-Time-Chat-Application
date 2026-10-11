@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import "./App.css";
 
-const socket = io({ transports: ["websocket"] });
+// Start with Socket.IO's polling transport and upgrade to WebSocket when the
+// host supports it. This keeps chat working behind proxies that block upgrades.
+const socket = io({ reconnection: true, reconnectionDelayMax: 5000, timeout: 10000 });
 const SELF_CHAT_ID = "saved";
 const GENERAL_CHAT_ID = "general";
 const MAX_MESSAGES = 500;

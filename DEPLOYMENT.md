@@ -4,6 +4,8 @@
 
 Create a Render Blueprint from this repository and select `render.yaml`. The Blueprint builds the Vite client and runs it from the existing Express/Socket.IO server. `/health` is the Render health check. The service binds to `0.0.0.0` and uses Render's `PORT` value.
 
+The chat needs the **Node Web Service** described by the Blueprint. A Render Static Site can serve the client but cannot host Socket.IO: the deployed app's `/health` endpoint should return `OK`, and `/socket.io/` must be handled by the same web service. If either endpoint returns Render's plain `Not Found`, deploy the Blueprint as a Web Service and use that service's URL. The client starts with Socket.IO polling and upgrades to WebSocket when available, so it also works behind proxies that block WebSocket upgrades.
+
 The checked-in Blueprint uses Render's free plan, which runs one instance. This is suitable for a small demo; it does not provide unlimited concurrent users or high availability. Free instances can also spin down when idle.
 
 ## Scaling to multiple instances
