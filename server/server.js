@@ -113,11 +113,6 @@ io.on("connection", (socket) => {
             if (previousName !== cleanName) {
                 const event = previousName ? "user_renamed" : "user_joined";
                 io.emit(event, { user: { id: socket.id, name: cleanName }, count: snapshot.count });
-                io.emit("receive_message", {
-                    type: "notice",
-                    text: previousName ? `${previousName} is now ${cleanName}.` : `${cleanName} joined.`,
-                    timestamp: new Date().toISOString()
-                });
             }
         } catch (error) {
             console.error("Unable to register online user:", error.message);
@@ -190,11 +185,6 @@ io.on("connection", (socket) => {
             const count = await removePresence(socket.id);
             if (username) {
                 io.emit("user_left", { id: socket.id, count });
-                io.emit("receive_message", {
-                    type: "notice",
-                    text: `${username} left.`,
-                    timestamp: new Date().toISOString()
-                });
             }
         } catch (error) {
             console.error("Unable to remove online user:", error.message);
